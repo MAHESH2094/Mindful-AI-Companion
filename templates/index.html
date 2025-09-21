@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mindful AI Companion</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        /* CSS variables for easy theme management */
+        :root {
+            --body-bg: #f4f6f8;
+            --chat-bg: #ffffff;
+            --user-msg-bg: #007bff;
+            --bot-msg-bg: #e9ecef;
+            --text-color-light: #ffffff;
+            --text-color-dark: #212529;
+            --font-family: 'Inter', sans-serif;
+            --border-color: #dee2e6;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--body-bg);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* Main container for the chat application */
+        .chat-container {
+            width: 100%;
+            max-width: 600px;
+            height: 80vh;
+            max-height: 700px;
+            display: flex;
+            flex-direction: column;
+            background: var(--chat-bg);
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        header {
+            background-color: var(--user-msg-bg);
+            color: var(--text-color-light);
+            padding: 16px;
+            font-weight: 600;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        /* The main chat window with messages */
+        #chatbox {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .message {
+            padding: 10px 15px;
+            border-radius: 20px;
+            max-width: 75%;
+            line-height: 1.5;
+            word-wrap: break-word; /* Prevents long words from overflowing */
+        }
+
+        /* Styling for user messages */
+        .message.user {
+            background-color: var(--user-msg-bg);
+            color: var(--text-color-light);
+            align-self: flex-end;
+            border-bottom-right-radius: 5px;
+        }
+
+        /* Styling for bot messages */
+        .message.bot {
+            background-color: var(--bot-msg-bg);
+            color: var(--text-color-dark);
+            align-self: flex-start;
+            border-bottom-left-radius: 5px;
+        }
+        
+        /* Bot's "typing..." indicator */
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .typing-indicator span {
+            height: 8px;
+            width: 8px;
+            background-color: #aaa;
+            border-radius: 50%;
+            animation: bounce 1.3s infinite ease-in-out;
+        }
+        .typing-indicator span:nth-of-type(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-of-type(3) { animation-delay: 0.4s; }
+
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1.0); }
+        }
+
+        /* Using a form for better accessibility and semantics */
+        #chat-form {
+            display: flex;
+            padding: 15px;
+            border-top: 1px solid var(--border-color);
+            flex-shrink: 0;
+            gap: 10px;
+        }
+
+        #input {
+            flex-grow: 1;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 25px;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        #input:focus {
+            border-color: var(--user-msg-bg);
+        }
+
+        #send {
+            padding: 12px 20px;
+            border: none;
+            background-color: var(--user-msg-bg);
+            color: white;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+        #send:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+        #send:disabled {
+            background-color: #a0c7ff;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+
+    <main class="chat-container">
+        <header>
+            <h2>Mindful AI Companion</h2>
+        </header>
+        <div id="chatbox"></div>
+        <template id="typing-template">
+            <div class="message bot typing-indicator">
+                <span></span><span></span><span></span>
+            </div>
+        </template>
+        <form id="chat-form">
+            <input id="input" type="text" placeholder="Type your message..." autocomplete="off" aria-label="Chat message input" />
+            <button id="send" type="submit">Send</button>
+        </form>
+    </main>
+
+    <script>
+        const chatbox = document.getElementById('chatbox');
+        const chatForm = document.getElementById('chat-form');
+        const input = document.getElementById('input');
+        const sendButton = document.getElementById('send');
+        const typingTemplate = document.getElementById('typing-template');
+
+        /**
+         * Converts simple markdown (bold, lists) to HTML for rich text display.
+         * @param {string} text - The markdown text.
+         * @returns {string} - The corresponding HTML.
+         */
+        function renderMarkdown(text) {
+            return text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
+                .replace(/^- (.*$)/gm, '<ul><li>$1</li></ul>') // Unordered lists
+                .replace(/(\<\/ul\>\n\<ul\>)/g, ''); // Merge consecutive list items
+        }
+
+        /**
+         * Adds a message to the chatbox.
+         * @param {string} text - The message content (can be HTML).
+         * @param {string} sender - 'user' or 'bot'.
+         */
+        function addMessage(text, sender) {
+            const msgDiv = document.createElement('div');
+            msgDiv.classList.add('message', sender);
+            msgDiv.innerHTML = text; // Use innerHTML to render formatted text
+            chatbox.appendChild(msgDiv);
+            chatbox.scrollTop = chatbox.scrollHeight; // Auto-scroll to the latest message
+        }
+
+        /**
+         * Toggles the loading state of the UI.
+         * @param {boolean} isLoading - True to show loading, false to hide.
+         */
+        function toggleLoading(isLoading) {
+            const indicator = chatbox.querySelector('.typing-indicator');
+            if (isLoading) {
+                if (!indicator) {
+                    const typingIndicator = typingTemplate.content.cloneNode(true);
+                    chatbox.appendChild(typingIndicator);
+                    chatbox.scrollTop = chatbox.scrollHeight;
+                }
+                sendButton.disabled = true;
+                input.disabled = true;
+            } else {
+                if (indicator) {
+                    indicator.remove();
+                }
+                sendButton.disabled = false;
+                input.disabled = false;
+                input.focus(); // Re-focus the input field
+            }
+        }
+        
+        /**
+         * Handles form submission to send a message to the backend.
+         * @param {Event} event - The form submission event.
+         */
+        async function handleSendMessage(event) {
+            event.preventDefault(); // Prevents page reload on form submit
+            const message = input.value.trim();
+            if (!message) return;
+
+            addMessage(message, 'user');
+            input.value = '';
+            toggleLoading(true);
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const formattedReply = renderMarkdown(data.reply);
+                addMessage(formattedReply, 'bot');
+            } catch (err) {
+                console.error("Error fetching bot reply:", err);
+                addMessage("I'm having trouble connecting right now. Please try again later.", 'bot');
+            } finally {
+                toggleLoading(false); // Always re-enable input
+            }
+        }
+
+        // --- Event Listeners ---
+        chatForm.addEventListener('submit', handleSendMessage);
+        
+        // --- Initializations ---
+        // Add a welcoming message when the chat loads
+        window.addEventListener('load', () => {
+            addMessage("Hello! I'm here to listen. How are you feeling today?", 'bot');
+            input.focus();
+        });
+
+    </script>
+</body>
+</html>
